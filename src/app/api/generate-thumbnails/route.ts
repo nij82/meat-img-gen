@@ -160,6 +160,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: error.message, jobId }, { status: 500 });
       }
 
+      logOpenAiCallFailure(error);
+
       const message = isAuthError(error)
         ? ERROR_MESSAGES.invalidKey
         : ERROR_MESSAGES.generateFailed;
@@ -220,6 +222,35 @@ function isAuthError(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const status = "status" in error ? Number(error.status) : null;
   return status === 401 || status === 403;
+}
+
+function logOpenAiCallFailure(error: unknown) {
+  const nestedError = readField(error, "error");
+  const status = toSafeLogValue(readField(error, "status"));
+  const type = toSafeLogValue(readField(nestedError, "type") ?? readField(error, "type"));
+  const code = toSafeLogValue(readField(nestedError, "code") ?? readField(error, "code"));
+  const message = toSafeLogValue(readField(nestedError, "message") ?? readField(error, "message"));
+  const param = toSafeLogValue(readField(nestedError, "param") ?? readField(error, "param"));
+
+  console.error("generate-thumbnails: openai.images.edit call failed", {
+    step: "openai.images.edit",
+    status,
+    type,
+    code,
+    message,
+    param,
+  });
+}
+
+function readField(value: unknown, field: string): unknown {
+  if (typeof value !== "object" || value === null) return undefined;
+  return (value as Record<string, unknown>)[field];
+}
+
+function toSafeLogValue(value: unknown): string | number | undefined {
+  if (typeof value === "string" || typeof value === "number") return value;
+  if (value === null || value === undefined) return undefined;
+  return "[unavailable]";
 }
 
 function errorResponse(error: string, status: number) {
